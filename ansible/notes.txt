@@ -1,0 +1,11 @@
+Run from new host:
+sudo apt-get update
+sudo apt-get upgrade
+sudo apt-get install openssh-server
+
+#Skippable. Playbook installs this
+sudo apt-get install -y python
+
+Run from gateway:
+ansible-playbook ansible/add_kafka_host.yml --ask-become-pass --extra-vars "ip=192.168.100.12"
+

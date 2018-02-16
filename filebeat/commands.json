@@ -1,0 +1,49 @@
+{
+  "DEFAULT_TOPIC" : "foo2",
+  "DEFAULT_KEY"   : "myKey",
+  "MS_DELAY"      : 5000, 
+  "COMMANDS"      :
+	[
+	  {
+	    "cmd": "echo Hello World",
+	    "topicId": "foo3",
+	    "key": "key1"
+	  },
+
+	  {
+	    "cmd": "cat /etc/hosts",
+	    "topicId": "foo2",
+	    "key": "key2"
+	  },
+
+	  {
+	    "cmd": "env",
+	    "topicId": "foo2",
+	    "key": "key3"
+	  },
+
+	  {
+	    "cmd": "ls -l",
+	    "topicId": "foo2",
+	    "key": "key4"
+	  },
+
+	  {
+	    "cmd": "sha512sum test.log",
+	    "topicId": "foo4",
+	    "key": "key5"
+	  },
+
+	  {
+	    "cmd": "whoami",
+	    "topicId": "foo3",
+	    "key": "key6"
+	  },
+
+	  {
+	    "cmd": "echo Goodbye World"
+	  }
+	]
+
+}
+

@@ -1,0 +1,175 @@
+---
+- name: Configuring host parameters on gateway
+  hosts: localhost
+  become: true
+  become_user: root
+  gather_facts: false
+  tasks:
+    - name: Checking for args
+      fail: msg="Usage - ansible-playbook add_kafka_host.yml --ask-become-pass --extra-vars 'ip=XXX.XXX.XXX.XXX'"
+      when: ip is not defined
+
+    - name: Collecting Kafka cluster config info
+      include_vars:
+        file: "{{ playbook_dir }}/../hosts/cluster_conf.yml"
+        name: config
+
+    - name: Checking whether IP already exists
+      debug: msg="the currently available brokers are {{ config.brokers }}"
+      failed_when: ip in config.brokers
+
+    - name: Determining Broker ID and port number to assign
+      set_fact:
+        id: "{{ config.numberOfBrokers|int + 1 }}"
+        port: "{{ config.numberOfBrokers|int + 29092 }}"
+
+    - name: Add IP to list of hosts
+      ini_file:
+        dest: /etc/ansible/hosts
+        section: brokers
+        option: broker{{ id }} ansible_ssh_host
+        value: "{{ ip }}"
+        no_extra_spaces: yes
+
+    - name: Add DNAT to iptables
+      command: iptables -t nat -A PREROUTING -p tcp -d {{ config.gatewayIP }} --dport {{ port }} -j DNAT --to-destination {{ ip }}
+
+    - name: Backing up iptables
+      command: "mv {{ item.src }} {{ item.dest }}"
+      with_items:
+        - { src: /etc/iptables.rules.1, dest: /etc/iptables.rules.2 }
+        - { src: /etc/iptables.rules, dest: /etc/iptables.rules.1 }
+      failed_when: false
+
+    - name: Saving iptables
+      shell: iptables-save > /etc/iptables.rules
+
+    - name: Updating cluster config info
+      replace:
+        path: "{{ playbook_dir }}/../hosts/cluster_conf.yml"
+        regexp: "{{ item.regex }}"
+        replace: "{{ item.str }}"
+      with_items:
+        - { regex: "numberOfBrokers: [0-9]+", str: "numberOfBrokers: {{ config.numberOfBrokers|int + 1 }}" }
+        - { regex: "\\Z", str: "  - {{ ip }}\\n" }
+
+    - meta: refresh_inventory
+
+
+- name: Configuring new host
+  hosts: broker{{ hostvars['localhost']['id'] }}
+  become: true
+  become_user: ubuntu
+  gather_facts: false
+  pre_tasks:
+    - name: Ensuring Python2 Installation
+      raw: test -e /usr/bin/python || (apt -y update && apt install -y python-minimal)  #checks and installs python2
+    - name: Gathering Facts
+      setup: # aka gather_facts
+  tasks:
+    - name: Pinging IP
+      ping:
+      register: ping_result
+
+    - name: Re-collecting Kafka cluster config info
+      include_vars:
+        file: "{{ playbook_dir }}/../hosts/cluster_conf.yml"
+        name: config
+
+    - name: Installing Docker Engine - Part 1
+      shell: "echo {{ config.brokerPassword }} | sudo -S {{ item }}"
+      with_items:
+        - "curl -fsSL https://download.docker.com/linux/ubuntu/gpg > /tmp/docker_gpg.key"       
+        - "apt-key add /tmp/docker_gpg.key"
+        - "add-apt-repository 'deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable'"
+        - "apt-get update"
+#        - "apt-get install -y docker-ce"
+#        - "usermod -aG docker ${USER}"
+      ignore_errors: yes
+      no_log: true
+
+    - name: Installing Docker Engine - Part 2
+      shell: "echo {{ config.brokerPassword }} | sudo -S {{ item }}"
+      with_items:
+#        - "curl -fsSL https://download.docker.com/linux/ubuntu/gpg > /tmp/docker_gpg.key"       
+#        - "apt-key add /tmp/docker_gpg.key"
+#        - "add-apt-repository 'deb [arch=amd64] https://download.docker.com/linux/ubuntu $(lsb_release -cs) main'"
+#        - "apt-get update"
+        - "apt-get install -y docker-ce"
+        - "usermod -aG docker ${USER}"
+      ignore_errors: yes
+
+    - name: Verifying Docker Installation
+      command: docker --version
+      register: out
+
+    - name: Displaying output
+      debug:
+        var: out.stdout
+      failed_when: out.stdout.find('Docker version') == -1
+
+    - name: Installing Docker Compose
+      shell: "echo {{ config.brokerPassword }} | sudo -S {{ item }}"
+      with_items:
+        - "curl -L https://github.com/docker/compose/releases/download/1.18.0/docker-compose-`uname -s`-`uname -m` -o /usr/local/bin/docker-compose"       
+        - "chmod +x /usr/local/bin/docker-compose"
+
+    - name: Verifying Docker Compose Installation
+      command: docker-compose --version
+      register: out
+
+    - name: Displaying output
+      debug:
+        var: out.stdout
+      failed_when: out.stdout.find('docker-compose version') == -1
+
+    - name: Create directories
+      file:
+        path: "{{ config.brokerRootPath }}/conf"
+        state: directory
+        mode: 0755
+
+    - name: SCP broker_jaas.conf
+      copy:
+        src: "{{ config.gatewayRootPath }}/conf/broker_jaas.conf"
+        dest: "{{ config.brokerRootPath }}/conf/broker_jaas.conf"
+
+    - name: SCP docker-compose.yml
+      copy:
+        src: "{{ config.gatewayRootPath }}/hosts/brokers-docker-compose.yml"
+        dest: "{{ config.brokerRootPath }}/docker-compose.yml"
+
+    - name: Modifying docker-compose.yml
+      replace:
+        path: "{{ config.brokerRootPath }}/docker-compose.yml"
+        regexp: "{{ item.regex }}"
+        replace: "{{ item.str }}"
+      with_items:
+        - { regex: "%ID%", str: "{{ hostvars['localhost']['id'] }}" }
+        - { regex: "%IP%", str: "{{ ip }}" }
+        - { regex: "%PORT%", str: "{{ hostvars['localhost']['port'] }}" }
+        - { regex: "%ROOT%", str: "{{ config.brokerRootPath }}" }
+
+    - name: Start Kafka container on new host
+      command: docker-compose up -d
+      args:
+        chdir: "{{ config.brokerRootPath }}"
+      register: out
+
+    - name: Displaying output
+      debug:
+        var: out.stdout_lines
+
+    - name: Waiting for Kafka to start
+      pause:
+        seconds: 20
+
+    - name: Checking Kafka status
+      command: docker-compose ps
+      args:
+        chdir: "{{ config.brokerRootPath }}"
+      register: out
+
+    - name: Displaying output
+      debug:
+        var: out.stdout_lines

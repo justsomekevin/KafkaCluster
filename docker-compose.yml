@@ -1,0 +1,82 @@
+---
+#-------------- docker-compose.yml --------------
+#  Docker Compose YAML file which specifies
+#  params for Zookeeper, Kafka and Logstash.
+#
+#  Written By    : Kevin Lee
+#  Modified By   : Kevin Lee
+#  Date Created  : 01/08/2018
+#  Date Modified : 02/08/2018
+#  Rev           : 3
+#
+#----------------------------------------------
+#  Change History:
+#  1 - Initial revision.
+#  2 - Added SASL support for Zookeeper and Kafka
+#  3 - Added Logstash container
+#
+version: '2'
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    hostname: zookeeper
+    network_mode: host
+    restart: always
+    environment:
+      ZOOKEEPER_SERVER_ID: 1
+      ZOOKEEPER_CLIENT_PORT: 22181
+      ZOOKEEPER_TICK_TIME: "2000"
+      KAFKA_OPTS: 
+        -Djava.security.auth.login.config=/etc/zookeeper/zookeeper_jaas.conf 
+        -Dzookeeper.authProvider.1=org.apache.zookeeper.server.auth.SASLAuthenticationProvider
+    extra_hosts:
+      - "moby:127.0.0.1"
+    volumes:
+      - ./conf/zookeeper_jaas.conf:/etc/zookeeper/zookeeper_jaas.conf
+
+  kafka:
+    image: confluentinc/cp-enterprise-kafka:latest
+    hostname: kafka1
+    restart: always
+    ports:
+      - "9092:9092"
+      - "19092:19092"
+      - "29092:29092"
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: 192.168.100.1:22181
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: SASL_PLAINTEXT:SASL_PLAINTEXT,INTERNAL:SASL_PLAINTEXT,EXTERNAL:SASL_PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_SASL_MECHANISM_INTER_BROKER_PROTOCOL: PLAIN
+      KAFKA_SASL_ENABLED_MECHANISMS: PLAIN
+      KAFKA_ADVERTISED_LISTENERS: SASL_PLAINTEXT://192.168.100.1:9092,INTERNAL://192.168.100.1:19092,EXTERNAL://172.30.176.117:29092
+      KAFKA_OPTS:
+        -Djava.security.auth.login.config=/etc/kafka/broker_jaas.conf
+      KAFKA_METRIC_REPORTERS: io.confluent.metrics.reporter.ConfluentMetricsReporter
+      CONFLUENT_METRICS_REPORTER_BOOTSTRAP_SERVERS: 192.168.100.1:9092
+      CONFLUENT_METRICS_REPORTER_ZOOKEEPER_CONNECT: 192.168.100.1:22181
+      CONFLUENT_METRICS_REPORTER_TOPIC_REPLICAS: 3
+      CONFLUENT_METRICS_ENABLE: 'true'
+      CONFLUENT_METRICS_REPORTER_TOPIC_CREATE: "false"
+      CONFLUENT_SUPPORT_CUSTOMER_ID: 'anonymous'
+      CONFLUENT_METRICS_REPORTER_SASL_MECHANISM: PLAIN
+      CONFLUENT_METRICS_REPORTER_SECURITY_PROTOCOL: SASL_PLAINTEXT
+    extra_hosts:
+      - "moby:127.0.0.1"
+    volumes:
+      - ./conf/broker_jaas.conf:/etc/kafka/broker_jaas.conf
+      - ./filebeat:/etc/kafka/filebeat
+
+  logstash:
+    image: logstash:latest
+    restart: always
+    volumes:
+      - ./logstash/logstash.conf:/etc/logstash/logstash.conf
+      - ./logstash/secrets:/etc/logstash/secrets
+    ports:
+      - "5044:5044"
+    command: logstash -f /etc/logstash/logstash.conf
+#    environment:
+#      LS_JAVA_OPTS: "-Xmx256m -Xms256m"

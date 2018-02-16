@@ -1,0 +1,11 @@
+---
+- name: check
+  hosts: brokers
+  tasks:
+    - name: "Start Kafka Brokers"
+      command: "docker-compose ps chdir=/home/ubuntu/Data/cp-docker-images/fortinet/sasl"
+      register: out
+    - name: "Print Stdout"
+      debug: var=out.stdout_lines
+    - name: "Print Stderr"
+      debug: var=out.stderr_lines

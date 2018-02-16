@@ -1,0 +1,34 @@
+---
+- name: Star Gateway Containers
+  hosts: localhost
+  tasks:
+    - name: Collecting Kafka cluster config info
+      include_vars:
+        file: "{{ playbook_dir }}/../hosts/cluster_conf.yml"
+        name: config
+    - name: "Starting Zookeeper and Kafka on Gateway"
+      command: docker-compose up -d
+      args:
+        chdir: "{{ playbook_dir }}/.."
+      register: out
+    - name: "Print Stdout"
+      debug: var=out.stdout_lines
+    - name: "Print Stderr"
+      debug: var=out.stderr_lines
+
+- name: Start all other Kafka Brokersart
+  hosts: brokers
+  tasks:
+    - name: Collecting Kafka cluster config info
+      include_vars:
+        file: "{{ playbook_dir }}/../hosts/cluster_conf.yml"
+        name: config
+    - name: "Start Kafka Brokers"
+      command: docker-compose up -d
+      args:
+        chdir: "{{ config.brokerRootPath }}"
+      register: out
+    - name: "Print Stdout"
+      debug: var=out.stdout_lines
+    - name: "Print Stderr"
+      debug: var=out.stderr_lines

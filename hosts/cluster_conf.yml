@@ -1,0 +1,9 @@
+---
+numberOfBrokers: 1
+gatewayIP: 172.30.176.117
+gatewayRootPath: /path/to/FortiExtenderKafka
+gatewayPassword: notnecessary
+brokerRootPath: /home/ubuntu/FortiExtenderKafka
+brokerPassword: ubuntu
+brokers:
+  - 192.168.100.1

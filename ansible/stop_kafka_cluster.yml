@@ -1,0 +1,34 @@
+---
+- name: Stop Gateway Containers
+  hosts: localhost
+  tasks:
+    - name: Collecting Kafka cluster config info
+      include_vars:
+        file: "{{ playbook_dir }}/../hosts/cluster_conf.yml"
+        name: config
+    - name: "Stopping Zookeeper and Kafka on Gateway"
+      command: docker-compose down
+      args:
+        chdir: "{{ playbook_dir }}/.."
+      register: out
+    - name: "Print Stdout"
+      debug: var=out.stdout_lines
+    - name: "Print Stderr"
+      debug: var=out.stderr_lines
+
+- name: Stop all other Kafka Brokers
+  hosts: brokers
+  tasks:
+    - name: Collecting Kafka cluster config info
+      include_vars:
+        file: "{{ playbook_dir }}/../hosts/cluster_conf.yml"
+        name: config
+    - name: "Stopping all Kafka Brokers"
+      command: docker-compose down
+      args:
+        chdir: "{{ config.brokerRootPath }}"
+      register: out
+    - name: "Print Stdout"
+      debug: var=out.stdout_lines
+    - name: "Print Stderr"
+      debug: var=out.stderr_lines
